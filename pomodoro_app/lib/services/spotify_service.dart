@@ -1,15 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
-import 'dart:js' as js;
-import 'dart:js_util' as js_util;
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/env.dart';
+import 'spotify_platform.dart';
 
 class SpotifyPlaylist {
   final String id;
@@ -127,8 +124,8 @@ class SpotifyService extends ChangeNotifier {
 
   bool _isTokenValid() {
     if (_accessToken == null || _tokenExpiry == null) return false;
-    return DateTime.now().isBefore(_tokenExpiry!.subtract(
-        const Duration(minutes: 5))); // 5-min buffer before expiry
+    return DateTime.now().isBefore(
+        _tokenExpiry!.subtract(const Duration(minutes: 5)));
   }
 
   // ---------------------------------------------------------------------------
@@ -164,27 +161,8 @@ class SpotifyService extends ChangeNotifier {
     final codeChallenge = _generateCodeChallenge(_codeVerifier!);
     final authUri = _buildAuthorizationUri(codeChallenge);
 
-    // Store the verifier in sessionStorage so we can retrieve it after redirect
-    _setSessionStorage('spotify_code_verifier', _codeVerifier!);
-
-    // Redirect the main window to Spotify authorization
-    _redirect(authUri.toString());
-  }
-
-  void _redirect(String url) {
-    html.window.location.href = url;
-  }
-
-  void _setSessionStorage(String key, String value) {
-    html.window.sessionStorage[key] = value;
-  }
-
-  String? _getSessionStorage(String key) {
-    return html.window.sessionStorage[key];
-  }
-
-  void _removeSessionStorage(String key) {
-    html.window.sessionStorage.remove(key);
+    sessionSet('spotify_code_verifier', _codeVerifier!);
+    redirectTo(authUri.toString());
   }
 
   /// Call this on app startup to check if we're returning from an auth redirect.
@@ -195,28 +173,23 @@ class SpotifyService extends ChangeNotifier {
 
     if (error != null) {
       debugPrint('Spotify auth error: $error');
-      _cleanRedirectUrl();
+      cleanUrl();
       return false;
     }
 
     if (code == null) return false;
 
-    // Retrieve the code verifier from session storage
-    final verifier = _getSessionStorage('spotify_code_verifier');
+    final verifier = sessionGet('spotify_code_verifier');
     if (verifier == null) {
       debugPrint('Spotify: missing code verifier in session storage');
-      _cleanRedirectUrl();
+      cleanUrl();
       return false;
     }
 
-    _removeSessionStorage('spotify_code_verifier');
+    sessionRemove('spotify_code_verifier');
     await _exchangeCodeForToken(code, verifier);
-    _cleanRedirectUrl();
+    cleanUrl();
     return _isAuthenticated;
-  }
-
-  void _cleanRedirectUrl() {
-    html.window.history.replaceState(null, '', '/');
   }
 
   Future<void> _exchangeCodeForToken(String code, String verifier) async {
@@ -316,7 +289,6 @@ class SpotifyService extends ChangeNotifier {
           final images = item['images'] as List?;
           String? imageUrl;
           if (images != null && images.isNotEmpty) {
-            // Prefer medium image, fallback to first
             imageUrl = images.length > 1
                 ? images[1]['url']
                 : images[0]['url'];
@@ -331,7 +303,7 @@ class SpotifyService extends ChangeNotifier {
         }).toList();
       } else if (response.statusCode == 401) {
         await _refreshAccessToken();
-        return fetchPlaylists(); // retry once
+        return fetchPlaylists();
       } else {
         debugPrint('Spotify fetch playlists failed: ${response.statusCode}');
         return [];
@@ -350,93 +322,45 @@ class SpotifyService extends ChangeNotifier {
     if (_accessToken == null) return;
 
     try {
-      // Check if Spotify SDK is loaded
-      final spotify = js_util.getProperty(js.context, 'Spotify');
-      if (spotify == null) {
+      if (!isSpotifySdkLoaded()) {
         debugPrint('Spotify Web Playback SDK not loaded yet');
-        // Retry after a delay
         Future.delayed(const Duration(seconds: 2), _initPlayer);
         return;
       }
 
-      // Create the player
-      final playerConstructor = js_util.getProperty(spotify, 'Player');
-      final options = {
-        'name': 'Focus Board',
-        'getOAuthToken': js_util.allowInterop((dynamic cb) {
-          // Provide the current access token
-          js_util.callMethod(cb as Object, 'call', [null, _accessToken]);
-        }),
-        'volume': 0.5,
-      };
-      _player = js_util.callConstructor(playerConstructor, [options]);
+      _player = createSpotifyPlayer('Focus Board', _accessToken!, 0.5);
 
       // Listen for ready state
-      js_util.callMethod(
-        _player!,
-        'addListener',
-        [
-          'ready',
-          js_util.allowInterop((dynamic event) {
-            _deviceId = js_util.getProperty(event as Object, 'device_id');
-            _isPlayerReady = true;
-            debugPrint('Spotify player ready, device: $_deviceId');
-            notifyListeners();
-          }),
-        ],
-      );
+      addJsListener(_player!, 'ready', (dynamic event) {
+        _deviceId = getJsProperty(event as Object, 'device_id');
+        _isPlayerReady = true;
+        debugPrint('Spotify player ready, device: $_deviceId');
+        notifyListeners();
+      });
 
       // Listen for player state changes
-      js_util.callMethod(
-        _player!,
-        'addListener',
-        [
-          'player_state_changed',
-          js_util.allowInterop((dynamic state) {
-            if (state == null) return;
-            _handlePlayerStateChange(state);
-          }),
-        ],
-      );
+      addJsListener(_player!, 'player_state_changed', (dynamic state) {
+        if (state == null) return;
+        _handlePlayerStateChange(state);
+      });
 
       // Listen for errors
-      js_util.callMethod(
-        _player!,
-        'addListener',
-        [
-          'initialization_error',
-          js_util.allowInterop((dynamic event) {
-            debugPrint('Spotify init error: ${js_util.getProperty(event as Object, 'message')}');
-          }),
-        ],
-      );
+      addJsListener(_player!, 'initialization_error', (dynamic event) {
+        debugPrint('Spotify init error: ${getJsProperty(event as Object, 'message')}');
+      });
 
-      js_util.callMethod(
-        _player!,
-        'addListener',
-        [
-          'authentication_error',
-          js_util.allowInterop((dynamic event) {
-            debugPrint('Spotify auth error: ${js_util.getProperty(event as Object, 'message')}');
-            _isPlayerReady = false;
-            notifyListeners();
-          }),
-        ],
-      );
+      addJsListener(_player!, 'authentication_error', (dynamic event) {
+        debugPrint('Spotify auth error: ${getJsProperty(event as Object, 'message')}');
+        _isPlayerReady = false;
+        notifyListeners();
+      });
 
-      js_util.callMethod(
-        _player!,
-        'addListener',
-        [
-          'account_error',
-          js_util.allowInterop((dynamic event) {
-            debugPrint('Spotify account error: ${js_util.getProperty(event as Object, 'message')}');
-          }),
-        ],
-      );
+      addJsListener(_player!, 'account_error', (dynamic event) {
+        debugPrint('Spotify account error: ${getJsProperty(event as Object, 'message')}');
+      });
 
       // Connect
-      js_util.callMethod(_player!, 'connect', []);
+      callJsMethod(_player!, 'connect', []);
     } catch (e) {
       debugPrint('Spotify player init error: $e');
     }
@@ -444,25 +368,25 @@ class SpotifyService extends ChangeNotifier {
 
   void _handlePlayerStateChange(dynamic state) {
     try {
-      final paused = js_util.getProperty(state, 'paused') as bool?;
-      final shuffle = js_util.getProperty(state, 'shuffle') as bool?;
-      final trackWindow = js_util.getProperty(state, 'track_window');
+      final paused = getJsProperty(state, 'paused') as bool?;
+      final shuffle = getJsProperty(state, 'shuffle') as bool?;
+      final trackWindow = getJsProperty(state, 'track_window');
       if (trackWindow == null) return;
 
-      final currentTrack = js_util.getProperty(trackWindow, 'current_track');
+      final currentTrack = getJsProperty(trackWindow, 'current_track');
       if (currentTrack != null) {
-        final name = js_util.getProperty(currentTrack, 'name') as String? ?? '';
-        final artists = js_util.getProperty(currentTrack, 'artists') as List?;
+        final name = getJsProperty(currentTrack, 'name') as String? ?? '';
+        final artists = getJsProperty(currentTrack, 'artists') as List?;
         String artist = '';
         if (artists != null && artists.isNotEmpty) {
-          artist = js_util.getProperty(artists[0], 'name') as String? ?? '';
+          artist = getJsProperty(artists[0], 'name') as String? ?? '';
         }
-        final album = js_util.getProperty(currentTrack, 'album');
+        final album = getJsProperty(currentTrack, 'album');
         String? imageUrl;
         if (album != null) {
-          final images = js_util.getProperty(album, 'images') as List?;
+          final images = getJsProperty(album, 'images') as List?;
           if (images != null && images.isNotEmpty) {
-            imageUrl = js_util.getProperty(images[0], 'url') as String?;
+            imageUrl = getJsProperty(images[0], 'url') as String?;
           }
         }
         _currentTrack = SpotifyTrack(
@@ -480,7 +404,8 @@ class SpotifyService extends ChangeNotifier {
     }
   }
 
-  Future<void> playPlaylist(SpotifyPlaylist playlist, {bool shuffle = true}) async {
+  Future<void> playPlaylist(SpotifyPlaylist playlist,
+      {bool shuffle = true}) async {
     if (_player == null) {
       debugPrint('Spotify player not initialized');
       return;
@@ -491,13 +416,10 @@ class SpotifyService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Play the playlist URI
-      final playOptions = {
-        'context_uri': playlist.uri,
-      };
-      js_util.callMethod(_player!, 'play', [playOptions]);
+      callJsMethod(_player!, 'play', [
+        {'context_uri': playlist.uri}
+      ]);
 
-      // Set shuffle
       if (shuffle) {
         await setShuffle(true);
       }
@@ -509,7 +431,7 @@ class SpotifyService extends ChangeNotifier {
   Future<void> togglePlayPause() async {
     if (_player == null) return;
     try {
-      js_util.callMethod(_player!, 'togglePlay', []);
+      callJsMethod(_player!, 'togglePlay', []);
     } catch (e) {
       debugPrint('Spotify toggle error: $e');
     }
@@ -518,7 +440,7 @@ class SpotifyService extends ChangeNotifier {
   Future<void> pause() async {
     if (_player == null) return;
     try {
-      js_util.callMethod(_player!, 'pause', []);
+      callJsMethod(_player!, 'pause', []);
     } catch (e) {
       debugPrint('Spotify pause error: $e');
     }
@@ -527,7 +449,7 @@ class SpotifyService extends ChangeNotifier {
   Future<void> resume() async {
     if (_player == null) return;
     try {
-      js_util.callMethod(_player!, 'resume', []);
+      callJsMethod(_player!, 'resume', []);
     } catch (e) {
       debugPrint('Spotify resume error: $e');
     }
@@ -540,7 +462,6 @@ class SpotifyService extends ChangeNotifier {
       final token = await _getValidAccessToken();
       if (token == null || _deviceId == null) return;
 
-      // Use Web API to set shuffle (Web Playback SDK doesn't have setShuffle)
       await http.put(
         Uri.https('api.spotify.com', '/v1/me/player/shuffle', {
           'state': value.toString(),
@@ -559,7 +480,7 @@ class SpotifyService extends ChangeNotifier {
   Future<void> skipNext() async {
     if (_player == null) return;
     try {
-      js_util.callMethod(_player!, 'nextTrack', []);
+      callJsMethod(_player!, 'nextTrack', []);
     } catch (e) {
       debugPrint('Spotify skip error: $e');
     }
@@ -568,7 +489,7 @@ class SpotifyService extends ChangeNotifier {
   Future<void> skipPrevious() async {
     if (_player == null) return;
     try {
-      js_util.callMethod(_player!, 'previousTrack', []);
+      callJsMethod(_player!, 'previousTrack', []);
     } catch (e) {
       debugPrint('Spotify skip prev error: $e');
     }
@@ -577,7 +498,7 @@ class SpotifyService extends ChangeNotifier {
   void disconnect() {
     if (_player != null) {
       try {
-        js_util.callMethod(_player!, 'disconnect', []);
+        callJsMethod(_player!, 'disconnect', []);
       } catch (_) {}
       _player = null;
       _isPlayerReady = false;
