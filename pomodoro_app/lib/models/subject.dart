@@ -14,7 +14,7 @@ class Subject {
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
-        'color': color.toARGB32(),
+        'color': color.value,
       };
 
   factory Subject.fromJson(Map<String, dynamic> json) {

@@ -9,6 +9,7 @@ import 'services/auth_service.dart';
 import 'services/session_manager.dart';
 import 'services/subject_manager.dart';
 import 'services/audio_service.dart';
+import 'services/spotify_service.dart';
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -32,11 +33,14 @@ class PomodoroCorkboardApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
+        Provider.value(value: repository),
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(
             create: (_) => SessionManager(repository: repository)..load()),
-        ChangeNotifierProvider(create: (_) => SubjectManager()..load()),
+        ChangeNotifierProvider(
+            create: (_) => SubjectManager()..attachRepository(repository)..load()),
         ChangeNotifierProvider(create: (_) => AudioService()),
+        ChangeNotifierProvider(create: (_) => SpotifyService()),
       ],
       child: MaterialApp(
         title: 'Focus Board',
@@ -71,10 +75,16 @@ class _AuthGateState extends State<AuthGate> {
     final auth = context.read<AuthService>();
     auth.addListener(_onAuthChanged);
 
+    // Handle Spotify OAuth redirect if returning from auth
+    final spotify = context.read<SpotifyService>();
+    spotify.handleRedirect();
+
     // If already logged in, load from cloud immediately
     if (auth.isLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.read<SessionManager>().loadFromCloud();
+        context.read<SubjectManager>().loadFromCloud().then((_) {
+          context.read<SessionManager>().loadFromCloud();
+        });
       });
     }
   }
@@ -88,12 +98,14 @@ class _AuthGateState extends State<AuthGate> {
   void _onAuthChanged() {
     final auth = context.read<AuthService>();
     final sm = context.read<SessionManager>();
+    final sub = context.read<SubjectManager>();
 
     if (auth.isLoggedIn) {
-      sm.loadFromCloud();
+      sub.loadFromCloud().then((_) => sm.loadFromCloud());
     } else {
       sm.clear();
       sm.load();
+      sub.load();
     }
   }
 

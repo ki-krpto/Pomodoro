@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/session.dart';
+import '../models/subject.dart';
 
 class SessionRepository {
   final SupabaseClient _client;
@@ -11,7 +12,6 @@ class SessionRepository {
   String? get _userId => _client.auth.currentUser?.id;
 
   /// Saves a completed Pomodoro session to the `sessions` table.
-  /// Returns the inserted row's `id`, or `null` on failure.
   Future<int?> saveSession(PomodoroSession session,
       {String? subjectName}) async {
     final userId = _userId;
@@ -38,7 +38,6 @@ class SessionRepository {
   }
 
   /// Fetches sessions for the current user, ordered by newest first.
-  /// Optionally filter by date range.
   Future<List<Map<String, dynamic>>> fetchSessions({
     DateTime? from,
     DateTime? to,
@@ -65,6 +64,90 @@ class SessionRepository {
       developer.log('Failed to fetch sessions from Supabase: $e',
           name: 'SessionRepository');
       return [];
+    }
+  }
+
+  // ── Preferences ──
+
+  Future<Map<String, dynamic>?> fetchPreferences() async {
+    final userId = _userId;
+    if (userId == null) return null;
+    try {
+      final response = await _client
+          .from('user_preferences')
+          .select()
+          .eq('user_id', userId)
+          .maybeSingle();
+      return response;
+    } catch (e) {
+      developer.log('Failed to fetch preferences: $e',
+          name: 'SessionRepository');
+      return null;
+    }
+  }
+
+  Future<void> savePreferences(List<int> presets, int breakDuration) async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      await _client.from('user_preferences').upsert({
+        'user_id': userId,
+        'presets': presets,
+        'break_duration': breakDuration,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      developer.log('Failed to save preferences: $e',
+          name: 'SessionRepository');
+    }
+  }
+
+  // ── Subjects ──
+
+  Future<List<Map<String, dynamic>>> fetchSubjects() async {
+    final userId = _userId;
+    if (userId == null) return [];
+    try {
+      final response = await _client
+          .from('subjects')
+          .select()
+          .eq('user_id', userId);
+      return List<Map<String, dynamic>>.from(response);
+    } catch (e) {
+      developer.log('Failed to fetch subjects: $e',
+          name: 'SessionRepository');
+      return [];
+    }
+  }
+
+  Future<void> saveSubject(Subject subject) async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      await _client.from('subjects').upsert({
+        'id': subject.id,
+        'user_id': userId,
+        'name': subject.name,
+        'color': subject.color.value,
+      });
+    } catch (e) {
+      developer.log('Failed to save subject: $e',
+          name: 'SessionRepository');
+    }
+  }
+
+  Future<void> deleteSubject(String id) async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      await _client
+          .from('subjects')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', userId);
+    } catch (e) {
+      developer.log('Failed to delete subject: $e',
+          name: 'SessionRepository');
     }
   }
 }

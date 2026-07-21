@@ -46,6 +46,11 @@ class SessionManager extends ChangeNotifier {
 
     final cloudData = await _repository!.fetchSessions();
     final cloudSessions = cloudData.map((row) {
+      final subjectName = row['subject'] as String?;
+      String? resolvedSubjectId;
+      if (subjectName != null && _subjectManager != null) {
+        resolvedSubjectId = _subjectManager!.getSubjectByIdentifier(subjectName)?.id;
+      }
       return PomodoroSession(
         durationMinutes: row['duration_minutes'] as int,
         completedAt: DateTime.parse(row['created_at'] as String).toLocal(),
@@ -53,7 +58,7 @@ class SessionManager extends ChangeNotifier {
         dy: 0,
         rotationDeg: 0,
         colorIndex: 0,
-        subjectId: null,
+        subjectId: resolvedSubjectId,
       );
     }).toList();
 

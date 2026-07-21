@@ -2,11 +2,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:audioplayers/audioplayers.dart';
+import '../repositories/session_repository.dart';
 import '../services/local_storage.dart';
 import '../services/session_manager.dart';
 import '../services/subject_manager.dart';
 import '../services/audio_service.dart';
+import '../services/spotify_service.dart';
 import 'cork_board.dart';
+import 'spotify_player.dart';
 
 class TimerView extends StatefulWidget {
   final ValueChanged<bool>? onFocusModeChanged;
@@ -30,6 +34,8 @@ class _TimerViewState extends State<TimerView> {
   String? _selectedSubjectId;
 
   bool _isBreak = false;
+  bool _workComplete = false;
+  final AudioPlayer _notificationPlayer = AudioPlayer();
 
   @override
   void initState() {
@@ -50,11 +56,46 @@ class _TimerViewState extends State<TimerView> {
         _remaining = Duration(minutes: _selectedMinutes);
       });
     }
+    _syncPreferencesFromCloud();
+  }
+
+  Future<void> _syncPreferencesFromCloud() async {
+    try {
+      final repo = context.read<SessionRepository>();
+      final prefs = await repo.fetchPreferences();
+      if (prefs != null && mounted) {
+        final cloudPresets = (prefs['presets'] as List<dynamic>?)
+            ?.map((e) => (e as num).toInt())
+            .toList();
+        final cloudBreak = prefs['break_duration'] as int?;
+        setState(() {
+          if (cloudPresets != null && cloudPresets.isNotEmpty) {
+            _presets = cloudPresets;
+          }
+          if (cloudBreak != null) {
+            _breakMinutes = cloudBreak;
+          }
+          if (!_presets.contains(_selectedMinutes)) {
+            _selectedMinutes = _presets.first;
+          }
+          _remaining = Duration(minutes: _selectedMinutes);
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _savePreferences() {
+    _storage.savePresets(_presets);
+    _storage.saveBreakDuration(_breakMinutes);
+    try {
+      context.read<SessionRepository>().savePreferences(_presets, _breakMinutes);
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    _notificationPlayer.dispose();
     super.dispose();
   }
 
@@ -92,7 +133,7 @@ class _TimerViewState extends State<TimerView> {
               if (value == null || value < 1 || value > 480) return;
               if (_presets.contains(value)) return Navigator.pop(ctx);
               setState(() => _presets = [..._presets, value]..sort());
-              _storage.savePresets(_presets);
+              _savePreferences();
               Navigator.pop(ctx);
             },
             child: const Text('Add'),
@@ -111,7 +152,7 @@ class _TimerViewState extends State<TimerView> {
         _remaining = Duration(minutes: _selectedMinutes);
       }
     });
-    _storage.savePresets(_presets);
+    _savePreferences();
   }
 
   void _startTicking() {
@@ -125,6 +166,7 @@ class _TimerViewState extends State<TimerView> {
   }
 
   void _start() {
+    _ticker?.cancel();
     setState(() {
       _isBreak = false;
       _state = _TimerState.running;
@@ -151,13 +193,14 @@ class _TimerViewState extends State<TimerView> {
       _isBreak = false;
       _state = _TimerState.idle;
       _remaining = Duration(minutes: _selectedMinutes);
+      _workComplete = false;
     });
     widget.onFocusModeChanged?.call(false);
   }
 
   Future<void> _onTickComplete() async {
     _ticker?.cancel();
-    SystemSound.play(SystemSoundType.click);
+    _playNotificationSound();
 
     if (!_isBreak) {
       await context
@@ -165,29 +208,36 @@ class _TimerViewState extends State<TimerView> {
           .completeSession(_selectedMinutes, subjectId: _selectedSubjectId);
       setState(() {
         _newestIndex = context.read<SessionManager>().sessions.length - 1;
+        _isBreak = true;
+        _state = _TimerState.paused;
+        _remaining = Duration(minutes: _breakMinutes);
+        _workComplete = true;
       });
-      _startBreak();
     } else {
-      _finishBreak();
+      setState(() {
+        _isBreak = false;
+        _state = _TimerState.paused;
+        _remaining = Duration(minutes: _selectedMinutes);
+        _workComplete = false;
+      });
     }
   }
 
-  void _startBreak() {
-    setState(() {
-      _isBreak = true;
-      _state = _TimerState.running;
-      _remaining = Duration(minutes: _breakMinutes);
-    });
-    _startTicking();
+  void _playNotificationSound() {
+    try {
+      _notificationPlayer.stop();
+      _notificationPlayer.play(AssetSource('audio/timer_complete.wav'));
+    } catch (e) {
+      debugPrint('Notification sound error: $e');
+      SystemSound.play(SystemSoundType.click);
+    }
   }
 
-  void _finishBreak() {
+  void _startBreakFromPaused() {
     setState(() {
-      _isBreak = false;
-      _state = _TimerState.idle;
-      _remaining = Duration(minutes: _selectedMinutes);
+      _state = _TimerState.running;
     });
-    widget.onFocusModeChanged?.call(false);
+    _startTicking();
   }
 
   Future<void> _requestExit() async {
@@ -198,7 +248,7 @@ class _TimerViewState extends State<TimerView> {
       builder: (ctx) => AlertDialog(
         title: Text(_isBreak ? 'Skip break?' : 'End session?'),
         content: Text(_isBreak
-            ? 'Skip the remaining break and return to the board?'
+            ? 'Skip the remaining break?'
             : 'End this focus session early? The session won\'t be saved.'),
         actions: [
           TextButton(
@@ -224,7 +274,10 @@ class _TimerViewState extends State<TimerView> {
     return '$m:$s';
   }
 
-  String get _phaseLabel => _isBreak ? 'Take a break' : 'Stay focused';
+  String get _phaseLabel {
+    if (_workComplete && _isBreak) return 'Break time';
+    return _isBreak ? 'Take a break' : 'Stay focused';
+  }
 
   Future<void> _debugAddSessions() async {
     const count = 5;
@@ -296,7 +349,7 @@ class _TimerViewState extends State<TimerView> {
           onRemovePreset: _removePreset,
           onBreakChanged: (m) {
             setState(() => _breakMinutes = m);
-            _storage.saveBreakDuration(m);
+            _savePreferences();
           },
           onStart: _start,
           selectedSubjectId: _selectedSubjectId,
@@ -406,19 +459,33 @@ class _TimerViewState extends State<TimerView> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _ActionButton(
-                      label:
-                          _state == _TimerState.running ? 'Pause' : 'Resume',
-                      onTap:
-                          _state == _TimerState.running ? _pause : _resume,
-                      filled: false,
-                    ),
-                    const SizedBox(width: 16),
-                    _ActionButton(
-                      label: 'End',
-                      onTap: _requestExit,
-                      filled: true,
-                    ),
+                    if (_workComplete && _isBreak) ...[
+                      _ActionButton(
+                        label: 'Start Break',
+                        onTap: _startBreakFromPaused,
+                        filled: true,
+                      ),
+                      const SizedBox(width: 16),
+                      _ActionButton(
+                        label: 'End',
+                        onTap: _requestExit,
+                        filled: false,
+                      ),
+                    ] else ...[
+                      _ActionButton(
+                        label:
+                            _state == _TimerState.running ? 'Pause' : 'Resume',
+                        onTap:
+                            _state == _TimerState.running ? _pause : _resume,
+                        filled: false,
+                      ),
+                      const SizedBox(width: 16),
+                      _ActionButton(
+                        label: 'End',
+                        onTap: _requestExit,
+                        filled: true,
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -1001,96 +1068,128 @@ class _MusicButton extends StatelessWidget {
   void _showSoundSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
-        return Consumer<AudioService>(
-          builder: (ctx, audio, _) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.85,
+          expand: false,
+          builder: (ctx, scrollController) {
             return SafeArea(
-              child: Padding(
+              child: ListView(
+                controller: scrollController,
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'Focus Sounds',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF3A2E27),
-                        ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'Music',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF3A2E27),
                       ),
                     ),
-                    const Divider(),
-                    ListTile(
-                      leading: Icon(
-                        Icons.check,
-                        color: !audio.isPlaying
-                            ? const Color(0xFF8B5A2B)
-                            : Colors.transparent,
+                  ),
+                  const Divider(),
+                  // Spotify section
+                  const SpotifySection(),
+                  const Divider(height: 24),
+                  // Ambient sounds section
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'Ambient Sounds',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF3A2E27).withOpacity(0.7),
                       ),
-                      title: const Text('None'),
-                      onTap: () {
-                        audio.stop();
-                        Navigator.pop(ctx);
-                      },
                     ),
-                    for (final sound in AudioService.availableSounds)
-                      ListTile(
-                        leading: Icon(
-                          Icons.check,
-                          color: audio.currentSound == sound.id
-                              ? const Color(0xFF8B5A2B)
-                              : Colors.transparent,
-                        ),
-                        title: Row(
-                          children: [
-                            Icon(sound.icon,
-                                size: 18,
-                                color: const Color(0xFF3A2E27)
-                                    .withOpacity(0.6)),
-                            const SizedBox(width: 8),
-                            Text(sound.label),
-                          ],
-                        ),
-                        onTap: () {
-                          audio.play(sound.id);
-                          Navigator.pop(ctx);
-                        },
-                      ),
-                    const Divider(),
-                    Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
+                  ),
+                  const SizedBox(height: 4),
+                  Consumer<AudioService>(
+                    builder: (ctx, audio, _) {
+                      return Column(
                         children: [
-                          Icon(Icons.volume_down,
+                          ListTile(
+                            dense: true,
+                            leading: Icon(
+                              Icons.check,
                               size: 18,
-                              color: const Color(0xFF3A2E27)
-                                  .withOpacity(0.5)),
-                          Expanded(
-                            child: Slider(
-                              value: audio.volume,
-                              min: 0.1,
-                              max: 2.0,
-                              divisions: 19,
-                              activeColor: const Color(0xFF8B5A2B),
-                              inactiveColor: const Color(0xFFDDD2C2),
-                              onChanged: (v) => audio.setVolume(v),
+                              color: !audio.isPlaying
+                                  ? const Color(0xFF8B5A2B)
+                                  : Colors.transparent,
+                            ),
+                            title: const Text('None', style: TextStyle(fontSize: 14)),
+                            onTap: () {
+                              audio.stop();
+                              Navigator.pop(ctx);
+                            },
+                          ),
+                          for (final sound in AudioService.availableSounds)
+                            ListTile(
+                              dense: true,
+                              leading: Icon(
+                                Icons.check,
+                                size: 18,
+                                color: audio.currentSound == sound.id
+                                    ? const Color(0xFF8B5A2B)
+                                    : Colors.transparent,
+                              ),
+                              title: Row(
+                                children: [
+                                  Icon(sound.icon,
+                                      size: 16,
+                                      color: const Color(0xFF3A2E27)
+                                          .withOpacity(0.6)),
+                                  const SizedBox(width: 8),
+                                  Text(sound.label,
+                                      style: const TextStyle(fontSize: 14)),
+                                ],
+                              ),
+                              onTap: () {
+                                audio.play(sound.id);
+                                Navigator.pop(ctx);
+                              },
+                            ),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            child: Row(
+                              children: [
+                                Icon(Icons.volume_down,
+                                    size: 16,
+                                    color: const Color(0xFF3A2E27)
+                                        .withOpacity(0.5)),
+                                Expanded(
+                                  child: Slider(
+                                    value: audio.volume,
+                                    min: 0.1,
+                                    max: 2.0,
+                                    divisions: 19,
+                                    activeColor: const Color(0xFF8B5A2B),
+                                    inactiveColor: const Color(0xFFDDD2C2),
+                                    onChanged: (v) => audio.setVolume(v),
+                                  ),
+                                ),
+                                Icon(Icons.volume_up,
+                                    size: 16,
+                                    color: const Color(0xFF3A2E27)
+                                        .withOpacity(0.5)),
+                              ],
                             ),
                           ),
-                          Icon(Icons.volume_up,
-                              size: 18,
-                              color: const Color(0xFF3A2E27)
-                                  .withOpacity(0.5)),
                         ],
-                      ),
-                    ),
-                  ],
-                ),
+                      );
+                    },
+                  ),
+                ],
               ),
             );
           },
@@ -1106,6 +1205,30 @@ class _MusicIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final audio = context.watch<AudioService>();
+    final spotify = context.watch<SpotifyService>();
+
+    // Spotify is playing
+    if (spotify.isPlaying && spotify.currentTrack != null) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.circle, size: 8, color: Color(0xFF1DB954)),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '${spotify.currentTrack!.name} - ${spotify.currentTrack!.artist}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: const Color(0xFF3A2E27).withOpacity(0.4)),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Ambient sound is playing
     if (!audio.isPlaying) return const SizedBox.shrink();
     final sound = AudioService.availableSounds
         .where((s) => s.id == audio.currentSound)
