@@ -168,29 +168,71 @@ class _SpotifySectionState extends State<SpotifySection> {
               ),
             ),
             const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () {
-                spotify.login();
-              },
-              icon: const Icon(Icons.login, size: 18),
-              label: const Text('Connect Spotify'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1DB954),
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24)),
+            if (spotify.isAuthenticating)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'Connecting to Spotify...',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF3A2E27),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else ...[
+              ElevatedButton.icon(
+                onPressed: () {
+                  spotify.login();
+                },
+                icon: const Icon(Icons.login, size: 18),
+                label: const Text('Connect Spotify'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1DB954),
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24)),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'You\'ll be redirected to Spotify to authorize',
-              style: TextStyle(
-                fontSize: 11,
-                color: Color(0xFF3A2E27),
+              const SizedBox(height: 8),
+              const Text(
+                'You\'ll be redirected to Spotify to authorize',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF3A2E27),
+                ),
               ),
-            ),
+            ],
+            if (spotify.authError != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  spotify.authError!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.redAccent,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
           ],
         ),
       ),

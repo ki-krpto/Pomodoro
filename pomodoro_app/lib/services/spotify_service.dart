@@ -51,7 +51,9 @@ class SpotifyService extends ChangeNotifier {
   bool _isPlaying = false;
   bool _shuffle = true;
   bool _sdkLoadFailed = false;
+  bool _isAuthenticating = false;
   int _sdkRetryCount = 0;
+  String? _authError;
   SpotifyPlaylist? _currentPlaylist;
   SpotifyTrack? _currentTrack;
   String? _deviceId;
@@ -64,6 +66,8 @@ class SpotifyService extends ChangeNotifier {
   bool get isPlaying => _isPlaying;
   bool get shuffle => _shuffle;
   bool get sdkLoadFailed => _sdkLoadFailed;
+  bool get isAuthenticating => _isAuthenticating;
+  String? get authError => _authError;
   SpotifyPlaylist? get currentPlaylist => _currentPlaylist;
   SpotifyTrack? get currentTrack => _currentTrack;
 
@@ -116,6 +120,7 @@ class SpotifyService extends ChangeNotifier {
     _isPlaying = false;
     _currentPlaylist = null;
     _currentTrack = null;
+    _authError = null;
     _player = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('spotify_access_token');
@@ -159,6 +164,7 @@ class SpotifyService extends ChangeNotifier {
   }
 
   Future<void> login() async {
+    _authError = null;
     _codeVerifier = _generateCodeVerifier();
     final codeChallenge = _generateCodeChallenge(_codeVerifier!);
     final authUri = _buildAuthorizationUri(codeChallenge);
@@ -175,22 +181,33 @@ class SpotifyService extends ChangeNotifier {
 
     if (error != null) {
       debugPrint('Spotify auth error: $error');
+      _authError = 'Spotify denied access: $error';
+      notifyListeners();
       cleanUrl();
       return false;
     }
 
     if (code == null) return false;
 
+    _isAuthenticating = true;
+    _authError = null;
+    notifyListeners();
+
     final verifier = sessionGet('spotify_code_verifier');
     if (verifier == null) {
       debugPrint('Spotify: missing code verifier in session storage');
+      _authError = 'Session expired — please try connecting again';
+      _isAuthenticating = false;
+      notifyListeners();
       cleanUrl();
       return false;
     }
 
     sessionRemove('spotify_code_verifier');
     await _exchangeCodeForToken(code, verifier);
+    _isAuthenticating = false;
     cleanUrl();
+    notifyListeners();
     return _isAuthenticated;
   }
 
@@ -224,15 +241,20 @@ class SpotifyService extends ChangeNotifier {
         _tokenExpiry =
             DateTime.now().add(Duration(seconds: data['expires_in']));
         _isAuthenticated = true;
+        _authError = null;
         await _saveTokens();
         notifyListeners();
         _initPlayer();
         debugPrint('Spotify: authenticated successfully');
       } else {
         debugPrint('Spotify token exchange failed: ${response.body}');
+        _authError = 'Token exchange failed (${response.statusCode})';
+        notifyListeners();
       }
     } catch (e) {
       debugPrint('Spotify token exchange error: $e');
+      _authError = 'Connection error: $e';
+      notifyListeners();
     }
   }
 
