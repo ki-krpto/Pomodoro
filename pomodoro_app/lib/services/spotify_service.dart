@@ -204,7 +204,12 @@ class SpotifyService extends ChangeNotifier {
     }
 
     sessionRemove('spotify_code_verifier');
-    await _exchangeCodeForToken(code, verifier);
+    try {
+      await _exchangeCodeForToken(code, verifier);
+    } catch (e) {
+      debugPrint('Spotify handleRedirect error: $e');
+      _authError = 'Unexpected error: $e';
+    }
     _isAuthenticating = false;
     cleanUrl();
     notifyListeners();
