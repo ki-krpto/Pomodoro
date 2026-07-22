@@ -80,6 +80,10 @@ class SpotifyService extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   Future<void> _loadTokens() async {
+    // If returning from an OAuth redirect, let handleRedirect() manage tokens
+    final uri = Uri.base;
+    if (uri.queryParameters.containsKey('code')) return;
+
     final prefs = await SharedPreferences.getInstance();
     _accessToken = prefs.getString('spotify_access_token');
     _refreshToken = prefs.getString('spotify_refresh_token');
