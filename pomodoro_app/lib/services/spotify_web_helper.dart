@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:js' as js;
 import 'dart:js_util' as js_util;
 
@@ -9,63 +10,138 @@ class FetchResponse {
 
 Future<FetchResponse> fetchPost(
     String url, Map<String, String> headers, String body) async {
-  final response = await js_util.promiseToFuture(
-    js_util.callMethod(js.context, 'fetch', [
-      url,
-      js_util.jsify({
-        'method': 'POST',
-        'headers': headers,
-        'body': body,
-      })
-    ]),
-  );
+  try {
+    final init = js_util.jsify({
+      'method': 'POST',
+      'headers': headers,
+      'body': body,
+    });
 
-  final status = js_util.getProperty(response, 'status') as int;
-  final text = await js_util.promiseToFuture(
-    js_util.callMethod(response as Object, 'text', []),
-  );
+    final fetchPromise =
+        js_util.callMethod(js.context, 'fetch', [url, init]);
 
-  return FetchResponse(statusCode: status, body: text as String);
+    final completer = Completer<FetchResponse>();
+
+    js_util.callMethod(fetchPromise as Object, 'then', [
+      js.allowInterop((dynamic response) {
+        final status = js_util.getProperty(response, 'status') as int;
+        final textPromise = js_util.callMethod(response, 'text', []);
+
+        js_util.callMethod(textPromise as Object, 'then', [
+          js.allowInterop((dynamic text) {
+            if (!completer.isCompleted) {
+              completer
+                  .complete(FetchResponse(statusCode: status, body: '$text'));
+            }
+          }),
+          js.allowInterop((dynamic error) {
+            if (!completer.isCompleted) {
+              completer.completeError(Exception('Response read error: $error'));
+            }
+          }),
+        ]);
+      }),
+      js.allowInterop((dynamic error) {
+        if (!completer.isCompleted) {
+          completer.completeError(Exception('Fetch error: $error'));
+        }
+      }),
+    ]);
+
+    return completer.future.timeout(const Duration(seconds: 15));
+  } catch (e) {
+    return FetchResponse(statusCode: 0, body: 'Error: $e');
+  }
 }
 
 Future<FetchResponse> fetchGet(
     String url, Map<String, String> headers) async {
-  final response = await js_util.promiseToFuture(
-    js_util.callMethod(js.context, 'fetch', [
-      url,
-      js_util.jsify({
-        'method': 'GET',
-        'headers': headers,
-      })
-    ]),
-  );
+  try {
+    final init = js_util.jsify({
+      'method': 'GET',
+      'headers': headers,
+    });
 
-  final status = js_util.getProperty(response, 'status') as int;
-  final text = await js_util.promiseToFuture(
-    js_util.callMethod(response as Object, 'text', []),
-  );
+    final fetchPromise =
+        js_util.callMethod(js.context, 'fetch', [url, init]);
 
-  return FetchResponse(statusCode: status, body: text as String);
+    final completer = Completer<FetchResponse>();
+
+    js_util.callMethod(fetchPromise as Object, 'then', [
+      js.allowInterop((dynamic response) {
+        final status = js_util.getProperty(response, 'status') as int;
+        final textPromise = js_util.callMethod(response, 'text', []);
+
+        js_util.callMethod(textPromise as Object, 'then', [
+          js.allowInterop((dynamic text) {
+            if (!completer.isCompleted) {
+              completer
+                  .complete(FetchResponse(statusCode: status, body: '$text'));
+            }
+          }),
+          js.allowInterop((dynamic error) {
+            if (!completer.isCompleted) {
+              completer.completeError(Exception('Response read error: $error'));
+            }
+          }),
+        ]);
+      }),
+      js.allowInterop((dynamic error) {
+        if (!completer.isCompleted) {
+          completer.completeError(Exception('Fetch error: $error'));
+        }
+      }),
+    ]);
+
+    return completer.future.timeout(const Duration(seconds: 15));
+  } catch (e) {
+    return FetchResponse(statusCode: 0, body: 'Error: $e');
+  }
 }
 
 Future<FetchResponse> fetchPut(
     String url, Map<String, String> headers) async {
-  final response = await js_util.promiseToFuture(
-    js_util.callMethod(js.context, 'fetch', [
-      url,
-      js_util.jsify({
-        'method': 'PUT',
-        'headers': headers,
-      })
-    ]),
-  );
+  try {
+    final init = js_util.jsify({
+      'method': 'PUT',
+      'headers': headers,
+    });
 
-  final status = js_util.getProperty(response, 'status') as int;
-  final text = await js_util.promiseToFuture(
-    js_util.callMethod(response as Object, 'text', []),
-  );
+    final fetchPromise =
+        js_util.callMethod(js.context, 'fetch', [url, init]);
 
-  return FetchResponse(statusCode: status, body: text as String);
+    final completer = Completer<FetchResponse>();
+
+    js_util.callMethod(fetchPromise as Object, 'then', [
+      js.allowInterop((dynamic response) {
+        final status = js_util.getProperty(response, 'status') as int;
+        final textPromise = js_util.callMethod(response, 'text', []);
+
+        js_util.callMethod(textPromise as Object, 'then', [
+          js.allowInterop((dynamic text) {
+            if (!completer.isCompleted) {
+              completer
+                  .complete(FetchResponse(statusCode: status, body: '$text'));
+            }
+          }),
+          js.allowInterop((dynamic error) {
+            if (!completer.isCompleted) {
+              completer.completeError(Exception('Response read error: $error'));
+            }
+          }),
+        ]);
+      }),
+      js.allowInterop((dynamic error) {
+        if (!completer.isCompleted) {
+          completer.completeError(Exception('Fetch error: $error'));
+        }
+      }),
+    ]);
+
+    return completer.future.timeout(const Duration(seconds: 15));
+  } catch (e) {
+    return FetchResponse(statusCode: 0, body: 'Error: $e');
+  }
 }
 
 /// Navigate the browser to a URL.
