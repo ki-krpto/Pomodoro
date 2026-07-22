@@ -8,6 +8,8 @@ class LocalStorage {
   static const _subjectKey = 'subjects_v1';
   static const _presetsKey = 'timer_presets_v1';
   static const _breakDurationKey = 'break_duration_v1';
+  static const _longBreakDurationKey = 'long_break_duration_v1';
+  static const _pomodorosBeforeLongBreakKey = 'pomodoros_before_long_break_v1';
 
   Future<List<PomodoroSession>> loadSessions() async {
     final prefs = await SharedPreferences.getInstance();
@@ -60,6 +62,8 @@ class LocalStorage {
   }
 
   static const int defaultBreakDuration = 5;
+  static const int defaultLongBreakDuration = 15;
+  static const int defaultPomodorosBeforeLongBreak = 4;
 
   Future<int> loadBreakDuration() async {
     final prefs = await SharedPreferences.getInstance();
@@ -69,5 +73,26 @@ class LocalStorage {
   Future<void> saveBreakDuration(int minutes) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_breakDurationKey, minutes);
+  }
+
+  Future<int> loadLongBreakDuration() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_longBreakDurationKey) ?? defaultLongBreakDuration;
+  }
+
+  Future<void> saveLongBreakDuration(int minutes) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_longBreakDurationKey, minutes);
+  }
+
+  Future<int> loadPomodorosBeforeLongBreak() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_pomodorosBeforeLongBreakKey) ??
+        defaultPomodorosBeforeLongBreak;
+  }
+
+  Future<void> savePomodorosBeforeLongBreak(int count) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_pomodorosBeforeLongBreakKey, count);
   }
 }

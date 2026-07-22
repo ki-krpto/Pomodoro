@@ -14,7 +14,6 @@ dependencies:
   google_fonts: ^6.2.1
   audioplayers: ^6.0.0
   supabase_flutter: ^2.8.0
-  http: ^1.2.0
   crypto: ^3.0.3
 
 dev_dependencies:

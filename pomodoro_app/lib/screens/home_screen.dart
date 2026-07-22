@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../services/session_manager.dart';
 import '../widgets/timer_view.dart';
 import '../widgets/stats_tab.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -76,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             setState(() => _isFocused = focused),
                       ),
                       StatsTab(),
+                      const SettingsScreen(),
                     ],
                   ),
                 ),
@@ -151,6 +153,11 @@ class _NavBar extends StatelessWidget {
             icon: Icon(Icons.bar_chart_outlined),
             activeIcon: Icon(Icons.bar_chart),
             label: 'Stats',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings_outlined),
+            activeIcon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),

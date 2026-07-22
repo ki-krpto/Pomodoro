@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/env.dart';
 import 'spotify_platform.dart';
@@ -51,6 +50,8 @@ class SpotifyService extends ChangeNotifier {
   bool _isPlayerReady = false;
   bool _isPlaying = false;
   bool _shuffle = true;
+  bool _sdkLoadFailed = false;
+  int _sdkRetryCount = 0;
   SpotifyPlaylist? _currentPlaylist;
   SpotifyTrack? _currentTrack;
   String? _deviceId;
@@ -62,6 +63,7 @@ class SpotifyService extends ChangeNotifier {
   bool get isPlayerReady => _isPlayerReady;
   bool get isPlaying => _isPlaying;
   bool get shuffle => _shuffle;
+  bool get sdkLoadFailed => _sdkLoadFailed;
   SpotifyPlaylist? get currentPlaylist => _currentPlaylist;
   SpotifyTrack? get currentTrack => _currentTrack;
 
@@ -192,20 +194,29 @@ class SpotifyService extends ChangeNotifier {
     return _isAuthenticated;
   }
 
+  String _encodeFormBody(Map<String, String> fields) {
+    return fields.entries
+        .map((e) =>
+            '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+  }
+
   Future<void> _exchangeCodeForToken(String code, String verifier) async {
     try {
-      final response = await http.post(
-        Uri.https('accounts.spotify.com', '/api/token'),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {
+      debugPrint('Spotify: exchanging auth code for token...');
+      final response = await fetchPost(
+        'https://accounts.spotify.com/api/token',
+        {'Content-Type': 'application/x-www-form-urlencoded'},
+        _encodeFormBody({
           'client_id': Env.spotifyClientId,
           'grant_type': 'authorization_code',
           'code': code,
           'redirect_uri': Env.spotifyRedirectUri,
           'code_verifier': verifier,
-        },
+        }),
       );
 
+      debugPrint('Spotify token exchange: status ${response.statusCode}');
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         _accessToken = data['access_token'];
@@ -216,6 +227,7 @@ class SpotifyService extends ChangeNotifier {
         await _saveTokens();
         notifyListeners();
         _initPlayer();
+        debugPrint('Spotify: authenticated successfully');
       } else {
         debugPrint('Spotify token exchange failed: ${response.body}');
       }
@@ -227,16 +239,18 @@ class SpotifyService extends ChangeNotifier {
   Future<void> _refreshAccessToken() async {
     if (_refreshToken == null) return;
     try {
-      final response = await http.post(
-        Uri.https('accounts.spotify.com', '/api/token'),
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: {
+      debugPrint('Spotify: refreshing access token...');
+      final response = await fetchPost(
+        'https://accounts.spotify.com/api/token',
+        {'Content-Type': 'application/x-www-form-urlencoded'},
+        _encodeFormBody({
           'client_id': Env.spotifyClientId,
           'grant_type': 'refresh_token',
           'refresh_token': _refreshToken!,
-        },
+        }),
       );
 
+      debugPrint('Spotify token refresh: status ${response.statusCode}');
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         _accessToken = data['access_token'];
@@ -275,11 +289,9 @@ class SpotifyService extends ChangeNotifier {
     if (token == null) return [];
 
     try {
-      final response = await http.get(
-        Uri.https('api.spotify.com', '/v1/me/playlists', {
-          'limit': '50',
-        }),
-        headers: {'Authorization': 'Bearer $token'},
+      final response = await fetchGet(
+        'https://api.spotify.com/v1/me/playlists?limit=50',
+        {'Authorization': 'Bearer $token'},
       );
 
       if (response.statusCode == 200) {
@@ -289,9 +301,8 @@ class SpotifyService extends ChangeNotifier {
           final images = item['images'] as List?;
           String? imageUrl;
           if (images != null && images.isNotEmpty) {
-            imageUrl = images.length > 1
-                ? images[1]['url']
-                : images[0]['url'];
+            imageUrl =
+                images.length > 1 ? images[1]['url'] : images[0]['url'];
           }
           return SpotifyPlaylist(
             id: item['id'],
@@ -323,10 +334,19 @@ class SpotifyService extends ChangeNotifier {
 
     try {
       if (!isSpotifySdkLoaded()) {
-        debugPrint('Spotify Web Playback SDK not loaded yet');
+        _sdkRetryCount++;
+        if (_sdkRetryCount >= 5) {
+          _sdkLoadFailed = true;
+          debugPrint('Spotify Web Playback SDK failed to load after 5 retries');
+          notifyListeners();
+          return;
+        }
+        debugPrint('Spotify Web Playback SDK not loaded yet (attempt $_sdkRetryCount)');
         Future.delayed(const Duration(seconds: 2), _initPlayer);
         return;
       }
+
+      _sdkLoadFailed = false;
 
       _player = createSpotifyPlayer('Focus Board', _accessToken!, 0.5);
 
@@ -346,17 +366,20 @@ class SpotifyService extends ChangeNotifier {
 
       // Listen for errors
       addJsListener(_player!, 'initialization_error', (dynamic event) {
-        debugPrint('Spotify init error: ${getJsProperty(event as Object, 'message')}');
+        debugPrint(
+            'Spotify init error: ${getJsProperty(event as Object, 'message')}');
       });
 
       addJsListener(_player!, 'authentication_error', (dynamic event) {
-        debugPrint('Spotify auth error: ${getJsProperty(event as Object, 'message')}');
+        debugPrint(
+            'Spotify auth error: ${getJsProperty(event as Object, 'message')}');
         _isPlayerReady = false;
         notifyListeners();
       });
 
       addJsListener(_player!, 'account_error', (dynamic event) {
-        debugPrint('Spotify account error: ${getJsProperty(event as Object, 'message')}');
+        debugPrint(
+            'Spotify account error: ${getJsProperty(event as Object, 'message')}');
       });
 
       // Connect
@@ -462,12 +485,9 @@ class SpotifyService extends ChangeNotifier {
       final token = await _getValidAccessToken();
       if (token == null || _deviceId == null) return;
 
-      await http.put(
-        Uri.https('api.spotify.com', '/v1/me/player/shuffle', {
-          'state': value.toString(),
-          'device_id': _deviceId,
-        }),
-        headers: {'Authorization': 'Bearer $token'},
+      await fetchPut(
+        'https://api.spotify.com/v1/me/player/shuffle?state=${value.toString()}&device_id=$_deviceId',
+        {'Authorization': 'Bearer $token'},
       );
 
       _shuffle = value;

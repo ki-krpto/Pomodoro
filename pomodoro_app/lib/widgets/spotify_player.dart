@@ -50,6 +50,29 @@ class _SpotifySectionState extends State<SpotifySection> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (spotify.sdkLoadFailed)
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8A838).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded,
+                    size: 16, color: Color(0xFFE8A838)),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Playback unavailable — the Spotify SDK is blocked. Try allowlisting sdk.scdn.co in Cloudflare.',
+                    style: TextStyle(
+                        fontSize: 12, color: Color(0xFF3A2E27)),
+                  ),
+                ),
+              ],
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(

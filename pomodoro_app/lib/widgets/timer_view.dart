@@ -24,6 +24,9 @@ class TimerView extends StatefulWidget {
 class _TimerViewState extends State<TimerView> {
   List<int> _presets = LocalStorage.defaultPresets;
   int _breakMinutes = LocalStorage.defaultBreakDuration;
+  int _longBreakMinutes = LocalStorage.defaultLongBreakDuration;
+  int _pomodorosBeforeLongBreak = LocalStorage.defaultPomodorosBeforeLongBreak;
+  int _pomodorosCompletedInCycle = 0;
   final LocalStorage _storage = LocalStorage();
 
   int _selectedMinutes = 25;
@@ -46,10 +49,14 @@ class _TimerViewState extends State<TimerView> {
   Future<void> _loadSettings() async {
     final presets = await _storage.loadPresets();
     final breakDuration = await _storage.loadBreakDuration();
+    final longBreakDuration = await _storage.loadLongBreakDuration();
+    final pomodorosBefore = await _storage.loadPomodorosBeforeLongBreak();
     if (mounted) {
       setState(() {
         _presets = presets;
         _breakMinutes = breakDuration;
+        _longBreakMinutes = longBreakDuration;
+        _pomodorosBeforeLongBreak = pomodorosBefore;
         if (!_presets.contains(_selectedMinutes)) {
           _selectedMinutes = _presets.first;
         }
@@ -68,12 +75,20 @@ class _TimerViewState extends State<TimerView> {
             ?.map((e) => (e as num).toInt())
             .toList();
         final cloudBreak = prefs['break_duration'] as int?;
+        final cloudLongBreak = prefs['long_break_duration'] as int?;
+        final cloudPomodorosBefore = prefs['pomodoros_before_long_break'] as int?;
         setState(() {
           if (cloudPresets != null && cloudPresets.isNotEmpty) {
             _presets = cloudPresets;
           }
           if (cloudBreak != null) {
             _breakMinutes = cloudBreak;
+          }
+          if (cloudLongBreak != null) {
+            _longBreakMinutes = cloudLongBreak;
+          }
+          if (cloudPomodorosBefore != null) {
+            _pomodorosBeforeLongBreak = cloudPomodorosBefore;
           }
           if (!_presets.contains(_selectedMinutes)) {
             _selectedMinutes = _presets.first;
@@ -87,8 +102,15 @@ class _TimerViewState extends State<TimerView> {
   void _savePreferences() {
     _storage.savePresets(_presets);
     _storage.saveBreakDuration(_breakMinutes);
+    _storage.saveLongBreakDuration(_longBreakMinutes);
+    _storage.savePomodorosBeforeLongBreak(_pomodorosBeforeLongBreak);
     try {
-      context.read<SessionRepository>().savePreferences(_presets, _breakMinutes);
+      context.read<SessionRepository>().savePreferences(
+        _presets,
+        _breakMinutes,
+        longBreakDuration: _longBreakMinutes,
+        pomodorosBeforeLongBreak: _pomodorosBeforeLongBreak,
+      );
     } catch (_) {}
   }
 
@@ -206,14 +228,23 @@ class _TimerViewState extends State<TimerView> {
       await context
           .read<SessionManager>()
           .completeSession(_selectedMinutes, subjectId: _selectedSubjectId);
+      _pomodorosCompletedInCycle++;
+      final useLongBreak =
+          _pomodorosCompletedInCycle >= _pomodorosBeforeLongBreak;
+      final breakDuration = useLongBreak ? _longBreakMinutes : _breakMinutes;
       setState(() {
         _newestIndex = context.read<SessionManager>().sessions.length - 1;
         _isBreak = true;
         _state = _TimerState.paused;
-        _remaining = Duration(minutes: _breakMinutes);
+        _remaining = Duration(minutes: breakDuration);
         _workComplete = true;
       });
     } else {
+      final wasLongBreak =
+          _pomodorosCompletedInCycle >= _pomodorosBeforeLongBreak;
+      if (wasLongBreak) {
+        _pomodorosCompletedInCycle = 0;
+      }
       setState(() {
         _isBreak = false;
         _state = _TimerState.paused;
@@ -275,7 +306,11 @@ class _TimerViewState extends State<TimerView> {
   }
 
   String get _phaseLabel {
-    if (_workComplete && _isBreak) return 'Break time';
+    if (_workComplete && _isBreak) {
+      final isLongBreak =
+          _pomodorosCompletedInCycle >= _pomodorosBeforeLongBreak;
+      return isLongBreak ? 'Long Break' : 'Break time';
+    }
     return _isBreak ? 'Take a break' : 'Stay focused';
   }
 
@@ -343,14 +378,9 @@ class _TimerViewState extends State<TimerView> {
         _BottomControls(
           presets: _presets,
           selectedMinutes: _selectedMinutes,
-          breakMinutes: _breakMinutes,
           onSelectDuration: _selectDuration,
           onAddPreset: _addCustomPreset,
           onRemovePreset: _removePreset,
-          onBreakChanged: (m) {
-            setState(() => _breakMinutes = m);
-            _savePreferences();
-          },
           onStart: _start,
           selectedSubjectId: _selectedSubjectId,
           onSubjectChanged: (id) => setState(() => _selectedSubjectId = id),
@@ -545,11 +575,9 @@ class _TopBar extends StatelessWidget {
 class _BottomControls extends StatelessWidget {
   final List<int> presets;
   final int selectedMinutes;
-  final int breakMinutes;
   final ValueChanged<int> onSelectDuration;
   final VoidCallback onAddPreset;
   final ValueChanged<int> onRemovePreset;
-  final ValueChanged<int> onBreakChanged;
   final VoidCallback onStart;
   final String? selectedSubjectId;
   final ValueChanged<String?> onSubjectChanged;
@@ -557,11 +585,9 @@ class _BottomControls extends StatelessWidget {
   const _BottomControls({
     required this.presets,
     required this.selectedMinutes,
-    required this.breakMinutes,
     required this.onSelectDuration,
     required this.onAddPreset,
     required this.onRemovePreset,
-    required this.onBreakChanged,
     required this.onStart,
     this.selectedSubjectId,
     required this.onSubjectChanged,
@@ -843,63 +869,6 @@ class _BottomControls extends StatelessWidget {
     );
   }
 
-  void _showBreakSettings(BuildContext context) {
-    int tempBreak = breakMinutes;
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Break duration'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: tempBreak > 1
-                        ? () => setDialogState(() => tempBreak--)
-                        : null,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Text(
-                      '$tempBreak min',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: tempBreak < 30
-                        ? () => setDialogState(() => tempBreak++)
-                        : null,
-                  ),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                onBreakChanged(tempBreak);
-                Navigator.pop(ctx);
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final subjectManager = context.watch<SubjectManager>();
@@ -954,36 +923,6 @@ class _BottomControls extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => _showBreakSettings(context),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF4CAF50).withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                        color: const Color(0xFF4CAF50).withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.coffee,
-                          size: 14,
-                          color: const Color(0xFF4CAF50).withOpacity(0.7)),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${breakMinutes}m',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: const Color(0xFF4CAF50).withOpacity(0.8),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
               const Spacer(),
               const _MusicButton(),
               const Spacer(),

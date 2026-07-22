@@ -86,7 +86,12 @@ class SessionRepository {
     }
   }
 
-  Future<void> savePreferences(List<int> presets, int breakDuration) async {
+  Future<void> savePreferences(
+    List<int> presets,
+    int breakDuration, {
+    int longBreakDuration = 15,
+    int pomodorosBeforeLongBreak = 4,
+  }) async {
     final userId = _userId;
     if (userId == null) return;
     try {
@@ -94,6 +99,8 @@ class SessionRepository {
         'user_id': userId,
         'presets': presets,
         'break_duration': breakDuration,
+        'long_break_duration': longBreakDuration,
+        'pomodoros_before_long_break': pomodorosBeforeLongBreak,
         'updated_at': DateTime.now().toIso8601String(),
       });
     } catch (e) {

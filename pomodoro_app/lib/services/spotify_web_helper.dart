@@ -1,6 +1,73 @@
 import 'dart:js' as js;
 import 'dart:js_util' as js_util;
 
+class FetchResponse {
+  final int statusCode;
+  final String body;
+  FetchResponse({required this.statusCode, required this.body});
+}
+
+Future<FetchResponse> fetchPost(
+    String url, Map<String, String> headers, String body) async {
+  final response = await js_util.promiseToFuture(
+    js_util.callMethod(js.context, 'fetch', [
+      url,
+      js_util.jsify({
+        'method': 'POST',
+        'headers': headers,
+        'body': body,
+      })
+    ]),
+  );
+
+  final status = js_util.getProperty(response, 'status') as int;
+  final text = await js_util.promiseToFuture(
+    js_util.callMethod(response as Object, 'text', []),
+  );
+
+  return FetchResponse(statusCode: status, body: text as String);
+}
+
+Future<FetchResponse> fetchGet(
+    String url, Map<String, String> headers) async {
+  final response = await js_util.promiseToFuture(
+    js_util.callMethod(js.context, 'fetch', [
+      url,
+      js_util.jsify({
+        'method': 'GET',
+        'headers': headers,
+      })
+    ]),
+  );
+
+  final status = js_util.getProperty(response, 'status') as int;
+  final text = await js_util.promiseToFuture(
+    js_util.callMethod(response as Object, 'text', []),
+  );
+
+  return FetchResponse(statusCode: status, body: text as String);
+}
+
+Future<FetchResponse> fetchPut(
+    String url, Map<String, String> headers) async {
+  final response = await js_util.promiseToFuture(
+    js_util.callMethod(js.context, 'fetch', [
+      url,
+      js_util.jsify({
+        'method': 'PUT',
+        'headers': headers,
+      })
+    ]),
+  );
+
+  final status = js_util.getProperty(response, 'status') as int;
+  final text = await js_util.promiseToFuture(
+    js_util.callMethod(response as Object, 'text', []),
+  );
+
+  return FetchResponse(statusCode: status, body: text as String);
+}
+
 /// Navigate the browser to a URL.
 void redirectTo(String url) {
   js.context['location']['href'] = url;
