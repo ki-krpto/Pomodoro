@@ -13,11 +13,13 @@ class _SpotifySectionState extends State<SpotifySection> {
   List<SpotifyPlaylist> _playlists = [];
   bool _isLoading = false;
   bool _loadAttempted = false;
+  bool _wasAuthenticated = false;
 
   @override
   void initState() {
     super.initState();
     final spotify = context.read<SpotifyService>();
+    _wasAuthenticated = spotify.isAuthenticated;
     if (spotify.isAuthenticated) {
       _loadPlaylists();
     }
@@ -42,7 +44,17 @@ class _SpotifySectionState extends State<SpotifySection> {
   Widget build(BuildContext context) {
     final spotify = context.watch<SpotifyService>();
 
+    if (!_wasAuthenticated && spotify.isAuthenticated) {
+      _wasAuthenticated = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_loadAttempted && !_isLoading) {
+          _loadPlaylists();
+        }
+      });
+    }
+
     if (!spotify.isAuthenticated) {
+      _wasAuthenticated = false;
       return _buildLoginPrompt(spotify);
     }
 
@@ -157,7 +169,9 @@ class _SpotifySectionState extends State<SpotifySection> {
             ),
             const SizedBox(height: 12),
             ElevatedButton.icon(
-              onPressed: () => spotify.login(),
+              onPressed: () {
+                spotify.login();
+              },
               icon: const Icon(Icons.login, size: 18),
               label: const Text('Connect Spotify'),
               style: ElevatedButton.styleFrom(
@@ -167,6 +181,14 @@ class _SpotifySectionState extends State<SpotifySection> {
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(24)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'You\'ll be redirected to Spotify to authorize',
+              style: TextStyle(
+                fontSize: 11,
+                color: Color(0xFF3A2E27),
               ),
             ),
           ],
