@@ -8,10 +8,6 @@ class LocalStorage {
 
   static const _sessionSuffix = 'pomodoro_sessions_v1';
   static const _subjectSuffix = 'subjects_v1';
-  static const _presetsKey = 'timer_presets_v1';
-  static const _breakDurationKey = 'break_duration_v1';
-  static const _longBreakDurationKey = 'long_break_duration_v1';
-  static const _pomodorosBeforeLongBreakKey = 'pomodoros_before_long_break_v1';
 
   // ── Sessions ──
 
@@ -51,9 +47,17 @@ class LocalStorage {
     await prefs.setString(_key(userId, _subjectSuffix), raw);
   }
 
-  // ── Preferences (device-wide, not user-scoped) ──
+  // ── Preferences (device-wide, shared across profiles) ──
+
+  static const _presetsKey = 'timer_presets_v1';
+  static const _breakDurationKey = 'break_duration_v1';
+  static const _longBreakDurationKey = 'long_break_duration_v1';
+  static const _pomodorosBeforeLongBreakKey = 'pomodoros_before_long_break_v1';
 
   static const List<int> defaultPresets = [25, 45, 60];
+  static const int defaultBreakDuration = 5;
+  static const int defaultLongBreakDuration = 15;
+  static const int defaultPomodorosBeforeLongBreak = 4;
 
   Future<List<int>> loadPresets() async {
     final prefs = await SharedPreferences.getInstance();
@@ -68,10 +72,6 @@ class LocalStorage {
     final raw = jsonEncode(presets);
     await prefs.setString(_presetsKey, raw);
   }
-
-  static const int defaultBreakDuration = 5;
-  static const int defaultLongBreakDuration = 15;
-  static const int defaultPomodorosBeforeLongBreak = 4;
 
   Future<int> loadBreakDuration() async {
     final prefs = await SharedPreferences.getInstance();
@@ -102,18 +102,5 @@ class LocalStorage {
   Future<void> savePomodorosBeforeLongBreak(int count) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_pomodorosBeforeLongBreakKey, count);
-  }
-
-  // ── Cleanup ──
-
-  Future<void> clearUser(String userId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final keys = [
-      _key(userId, _sessionSuffix),
-      _key(userId, _subjectSuffix),
-    ];
-    for (final key in keys) {
-      await prefs.remove(key);
-    }
   }
 }

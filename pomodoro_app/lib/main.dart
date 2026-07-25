@@ -1,45 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' hide LocalStorage;
 
-import 'config/env.dart';
-import 'repositories/session_repository.dart';
-import 'services/auth_service.dart';
-import 'services/local_storage.dart';
 import 'services/session_manager.dart';
 import 'services/subject_manager.dart';
+import 'services/user_profile_manager.dart';
 import 'services/audio_service.dart';
 import 'services/spotify_service.dart';
-import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/profile_picker.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Supabase.initialize(
-    url: Env.supabaseUrl,
-    anonKey: Env.supabaseAnonKey,
-  );
+  final profileManager = UserProfileManager();
+  await profileManager.load();
 
-  runApp(const PomodoroCorkboardApp());
+  runApp(PomodoroCorkboardApp(profileManager: profileManager));
 }
 
 class PomodoroCorkboardApp extends StatelessWidget {
-  const PomodoroCorkboardApp({super.key});
+  final UserProfileManager profileManager;
+
+  const PomodoroCorkboardApp({super.key, required this.profileManager});
 
   @override
   Widget build(BuildContext context) {
-    final repository = SessionRepository();
-
     return MultiProvider(
       providers: [
-        Provider.value(value: repository),
-        ChangeNotifierProvider(create: (_) => AuthService()),
-        ChangeNotifierProvider(
-            create: (_) => SessionManager(repository: repository)),
-        ChangeNotifierProvider(
-            create: (_) => SubjectManager()..attachRepository(repository)),
+        ChangeNotifierProvider.value(value: profileManager),
+        ChangeNotifierProvider(create: (_) => SessionManager()),
+        ChangeNotifierProvider(create: (_) => SubjectManager()),
         ChangeNotifierProvider(create: (_) => AudioService()),
         ChangeNotifierProvider(create: (_) => SpotifyService()),
       ],
@@ -55,85 +46,59 @@ class PomodoroCorkboardApp extends StatelessWidget {
           ),
           textTheme: GoogleFonts.nunitoTextTheme(),
         ),
-        home: const AuthGate(),
+        home: const AppEntry(),
       ),
     );
   }
 }
 
-/// Routes to AuthScreen or HomeScreen based on auth state.
-class AuthGate extends StatefulWidget {
-  const AuthGate({super.key});
+class AppEntry extends StatefulWidget {
+  const AppEntry({super.key});
 
   @override
-  State<AuthGate> createState() => _AuthGateState();
+  State<AppEntry> createState() => _AppEntryState();
 }
 
-class _AuthGateState extends State<AuthGate> {
-  final _localStorage = LocalStorage();
-  String? _lastUserId;
-
+class _AppEntryState extends State<AppEntry> {
   @override
   void initState() {
     super.initState();
-    final auth = context.read<AuthService>();
-    auth.addListener(_onAuthChanged);
-
-    // Handle Spotify OAuth redirect if returning from auth
-    final spotify = context.read<SpotifyService>();
-    spotify.handleRedirect();
-
-    // If already logged in, wire up user IDs and load from cloud
-    if (auth.isLoggedIn) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _setupUser(auth.user?.id);
-      });
+    final profileManager = context.read<UserProfileManager>();
+    if (profileManager.currentProfile != null) {
+      _wireUpManagers(profileManager.currentUserId!);
     }
   }
 
-  @override
-  void dispose() {
-    context.read<AuthService>().removeListener(_onAuthChanged);
-    super.dispose();
-  }
-
-  void _setupUser(String? userId) {
+  void _wireUpManagers(String userId) {
     final sm = context.read<SessionManager>();
     final sub = context.read<SubjectManager>();
-    sm.attachSubjectManager(sub);
     sm.setUserId(userId);
     sub.setUserId(userId);
-    _lastUserId = userId;
-    sub.loadFromCloud().then((_) => sm.loadFromCloud());
+    sub.load().then((_) => sm.load());
   }
 
-  void _onAuthChanged() {
-    final auth = context.read<AuthService>();
-    final sm = context.read<SessionManager>();
-    final sub = context.read<SubjectManager>();
+  void _onProfileSelected() {
+    final profileManager = context.read<UserProfileManager>();
+    _wireUpManagers(profileManager.currentUserId!);
+    setState(() {});
+  }
 
-    if (auth.isLoggedIn) {
-      _setupUser(auth.user?.id);
-    } else {
-      // Clear old user's cached SharedPreferences data
-      final oldUserId = _lastUserId;
-      if (oldUserId != null) {
-        _localStorage.clearUser(oldUserId);
-      }
-      sm.setUserId(null);
-      sm.clear();
-      sub.setUserId(null);
-      sub.load();
-    }
+  void _onSwitchProfile() {
+    final profileManager = context.read<UserProfileManager>();
+    profileManager.clearCurrentProfile();
+    context.read<SessionManager>().setUserId(null);
+    context.read<SubjectManager>().setUserId(null);
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthService>();
+    final profileManager = context.watch<UserProfileManager>();
 
-    if (auth.isLoggedIn) {
-      return const HomeScreen();
+    if (profileManager.currentProfile == null) {
+      return ProfilePicker(onProfileSelected: _onProfileSelected);
     }
-    return const AuthScreen();
+
+    return HomeScreen(onSwitchProfile: _onSwitchProfile);
   }
 }

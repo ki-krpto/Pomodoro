@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../repositories/session_repository.dart';
 import '../services/local_storage.dart';
+import '../services/user_profile_manager.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final VoidCallback onSwitchProfile;
+
+  const SettingsScreen({super.key, required this.onSwitchProfile});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -37,33 +39,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _pomodorosBeforeLongBreak = pomodorosBefore;
       });
     }
-    _syncFromCloud();
-  }
-
-  Future<void> _syncFromCloud() async {
-    try {
-      final repo = context.read<SessionRepository>();
-      final prefs = await repo.fetchPreferences();
-      if (prefs != null && mounted) {
-        final cloudPresets = (prefs['presets'] as List<dynamic>?)
-            ?.map((e) => (e as num).toInt())
-            .toList();
-        final cloudBreak = prefs['break_duration'] as int?;
-        final cloudLongBreak = prefs['long_break_duration'] as int?;
-        final cloudPomodorosBefore =
-            prefs['pomodoros_before_long_break'] as int?;
-        setState(() {
-          if (cloudPresets != null && cloudPresets.isNotEmpty) {
-            _presets = cloudPresets;
-          }
-          if (cloudBreak != null) _breakMinutes = cloudBreak;
-          if (cloudLongBreak != null) _longBreakMinutes = cloudLongBreak;
-          if (cloudPomodorosBefore != null) {
-            _pomodorosBeforeLongBreak = cloudPomodorosBefore;
-          }
-        });
-      }
-    } catch (_) {}
   }
 
   void _saveAll() {
@@ -71,14 +46,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _storage.saveBreakDuration(_breakMinutes);
     _storage.saveLongBreakDuration(_longBreakMinutes);
     _storage.savePomodorosBeforeLongBreak(_pomodorosBeforeLongBreak);
-    try {
-      context.read<SessionRepository>().savePreferences(
-        _presets,
-        _breakMinutes,
-        longBreakDuration: _longBreakMinutes,
-        pomodorosBeforeLongBreak: _pomodorosBeforeLongBreak,
-      );
-    } catch (_) {}
   }
 
   void _addPreset() {
@@ -183,9 +150,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final profile = context.watch<UserProfileManager>().currentProfile;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
+        if (profile != null) ...[
+          _buildSectionHeader('Profile'),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFDDD2C2)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: profile.color,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      profile.name[0].toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    profile.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF3A2E27),
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: widget.onSwitchProfile,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF8B5A2B).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Switch',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF8B5A2B).withOpacity(0.8),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
         _buildSectionHeader('Timer Presets'),
         const SizedBox(height: 4),
         Wrap(

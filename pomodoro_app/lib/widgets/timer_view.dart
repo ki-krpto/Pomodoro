@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:audioplayers/audioplayers.dart';
-import '../repositories/session_repository.dart';
 import '../services/local_storage.dart';
 import '../services/session_manager.dart';
 import '../services/subject_manager.dart';
@@ -63,40 +62,6 @@ class _TimerViewState extends State<TimerView> {
         _remaining = Duration(minutes: _selectedMinutes);
       });
     }
-    _syncPreferencesFromCloud();
-  }
-
-  Future<void> _syncPreferencesFromCloud() async {
-    try {
-      final repo = context.read<SessionRepository>();
-      final prefs = await repo.fetchPreferences();
-      if (prefs != null && mounted) {
-        final cloudPresets = (prefs['presets'] as List<dynamic>?)
-            ?.map((e) => (e as num).toInt())
-            .toList();
-        final cloudBreak = prefs['break_duration'] as int?;
-        final cloudLongBreak = prefs['long_break_duration'] as int?;
-        final cloudPomodorosBefore = prefs['pomodoros_before_long_break'] as int?;
-        setState(() {
-          if (cloudPresets != null && cloudPresets.isNotEmpty) {
-            _presets = cloudPresets;
-          }
-          if (cloudBreak != null) {
-            _breakMinutes = cloudBreak;
-          }
-          if (cloudLongBreak != null) {
-            _longBreakMinutes = cloudLongBreak;
-          }
-          if (cloudPomodorosBefore != null) {
-            _pomodorosBeforeLongBreak = cloudPomodorosBefore;
-          }
-          if (!_presets.contains(_selectedMinutes)) {
-            _selectedMinutes = _presets.first;
-          }
-          _remaining = Duration(minutes: _selectedMinutes);
-        });
-      }
-    } catch (_) {}
   }
 
   void _savePreferences() {
@@ -104,14 +69,6 @@ class _TimerViewState extends State<TimerView> {
     _storage.saveBreakDuration(_breakMinutes);
     _storage.saveLongBreakDuration(_longBreakMinutes);
     _storage.savePomodorosBeforeLongBreak(_pomodorosBeforeLongBreak);
-    try {
-      context.read<SessionRepository>().savePreferences(
-        _presets,
-        _breakMinutes,
-        longBreakDuration: _longBreakMinutes,
-        pomodorosBeforeLongBreak: _pomodorosBeforeLongBreak,
-      );
-    } catch (_) {}
   }
 
   @override

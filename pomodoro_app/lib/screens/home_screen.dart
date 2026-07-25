@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/auth_service.dart';
 import '../services/session_manager.dart';
 import '../widgets/timer_view.dart';
 import '../widgets/stats_tab.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback onSwitchProfile;
+
+  const HomeScreen({super.key, required this.onSwitchProfile});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -19,8 +20,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final email = context.read<AuthService>().user?.email ?? '';
-
     return Consumer<SessionManager>(
       builder: (ctx, manager, _) {
         if (!manager.loaded) {
@@ -34,40 +33,6 @@ class _HomeScreenState extends State<HomeScreen> {
             bottom: false,
             child: Column(
               children: [
-                if (!_isFocused)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 8, 16, 0),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            email,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: const Color(0xFF3A2E27).withOpacity(0.3),
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () => _showLogoutDialog(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(
-                              Icons.person_outline,
-                              size: 18,
-                              color:
-                                  const Color(0xFF3A2E27).withOpacity(0.4),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 Expanded(
                   child: IndexedStack(
                     index: _currentTab,
@@ -77,7 +42,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             setState(() => _isFocused = focused),
                       ),
                       StatsTab(),
-                      const SettingsScreen(),
+                      SettingsScreen(
+                        onSwitchProfile: widget.onSwitchProfile,
+                      ),
                     ],
                   ),
                 ),
@@ -92,29 +59,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
         );
       },
-    );
-  }
-
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Log out'),
-        content: const Text('Are you sure you want to log out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              context.read<AuthService>().signOut();
-            },
-            child: const Text('Log out'),
-          ),
-        ],
-      ),
     );
   }
 }
