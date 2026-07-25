@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../repositories/session_repository.dart';
-import '../services/auth_service.dart';
 import '../services/local_storage.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -25,14 +24,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadSettings();
   }
 
-  String? get _userId => context.read<AuthService>().user?.id;
-
   Future<void> _loadSettings() async {
-    final uid = _userId;
-    final presets = await _storage.loadPresets(uid ?? '');
-    final breakDuration = await _storage.loadBreakDuration(uid ?? '');
-    final longBreakDuration = await _storage.loadLongBreakDuration(uid ?? '');
-    final pomodorosBefore = await _storage.loadPomodorosBeforeLongBreak(uid ?? '');
+    final presets = await _storage.loadPresets();
+    final breakDuration = await _storage.loadBreakDuration();
+    final longBreakDuration = await _storage.loadLongBreakDuration();
+    final pomodorosBefore = await _storage.loadPomodorosBeforeLongBreak();
     if (mounted) {
       setState(() {
         _presets = presets;
@@ -71,11 +67,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _saveAll() {
-    final uid = _userId ?? '';
-    _storage.savePresets(uid, _presets);
-    _storage.saveBreakDuration(uid, _breakMinutes);
-    _storage.saveLongBreakDuration(uid, _longBreakMinutes);
-    _storage.savePomodorosBeforeLongBreak(uid, _pomodorosBeforeLongBreak);
+    _storage.savePresets(_presets);
+    _storage.saveBreakDuration(_breakMinutes);
+    _storage.saveLongBreakDuration(_longBreakMinutes);
+    _storage.savePomodorosBeforeLongBreak(_pomodorosBeforeLongBreak);
     try {
       context.read<SessionRepository>().savePreferences(
         _presets,

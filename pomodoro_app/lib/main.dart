@@ -100,6 +100,7 @@ class _AuthGateState extends State<AuthGate> {
   void _setupUser(String? userId) {
     final sm = context.read<SessionManager>();
     final sub = context.read<SubjectManager>();
+    sm.attachSubjectManager(sub);
     sm.setUserId(userId);
     sub.setUserId(userId);
     _lastUserId = userId;

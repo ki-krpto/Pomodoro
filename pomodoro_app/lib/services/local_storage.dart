@@ -8,11 +8,10 @@ class LocalStorage {
 
   static const _sessionSuffix = 'pomodoro_sessions_v1';
   static const _subjectSuffix = 'subjects_v1';
-  static const _presetsSuffix = 'timer_presets_v1';
-  static const _breakDurationSuffix = 'break_duration_v1';
-  static const _longBreakDurationSuffix = 'long_break_duration_v1';
-  static const _pomodorosBeforeLongBreakSuffix =
-      'pomodoros_before_long_break_v1';
+  static const _presetsKey = 'timer_presets_v1';
+  static const _breakDurationKey = 'break_duration_v1';
+  static const _longBreakDurationKey = 'long_break_duration_v1';
+  static const _pomodorosBeforeLongBreakKey = 'pomodoros_before_long_break_v1';
 
   // ── Sessions ──
 
@@ -52,59 +51,57 @@ class LocalStorage {
     await prefs.setString(_key(userId, _subjectSuffix), raw);
   }
 
-  // ── Preferences ──
+  // ── Preferences (device-wide, not user-scoped) ──
 
   static const List<int> defaultPresets = [25, 45, 60];
 
-  Future<List<int>> loadPresets(String userId) async {
+  Future<List<int>> loadPresets() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key(userId, _presetsSuffix));
+    final raw = prefs.getString(_presetsKey);
     if (raw == null || raw.isEmpty) return defaultPresets;
     final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
     return decoded.cast<int>();
   }
 
-  Future<void> savePresets(String userId, List<int> presets) async {
+  Future<void> savePresets(List<int> presets) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = jsonEncode(presets);
-    await prefs.setString(_key(userId, _presetsSuffix), raw);
+    await prefs.setString(_presetsKey, raw);
   }
 
   static const int defaultBreakDuration = 5;
   static const int defaultLongBreakDuration = 15;
   static const int defaultPomodorosBeforeLongBreak = 4;
 
-  Future<int> loadBreakDuration(String userId) async {
+  Future<int> loadBreakDuration() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_key(userId, _breakDurationSuffix)) ??
-        defaultBreakDuration;
+    return prefs.getInt(_breakDurationKey) ?? defaultBreakDuration;
   }
 
-  Future<void> saveBreakDuration(String userId, int minutes) async {
+  Future<void> saveBreakDuration(int minutes) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_key(userId, _breakDurationSuffix), minutes);
+    await prefs.setInt(_breakDurationKey, minutes);
   }
 
-  Future<int> loadLongBreakDuration(String userId) async {
+  Future<int> loadLongBreakDuration() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_key(userId, _longBreakDurationSuffix)) ??
-        defaultLongBreakDuration;
+    return prefs.getInt(_longBreakDurationKey) ?? defaultLongBreakDuration;
   }
 
-  Future<void> saveLongBreakDuration(String userId, int minutes) async {
+  Future<void> saveLongBreakDuration(int minutes) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_key(userId, _longBreakDurationSuffix), minutes);
+    await prefs.setInt(_longBreakDurationKey, minutes);
   }
 
-  Future<int> loadPomodorosBeforeLongBreak(String userId) async {
+  Future<int> loadPomodorosBeforeLongBreak() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_key(userId, _pomodorosBeforeLongBreakSuffix)) ??
+    return prefs.getInt(_pomodorosBeforeLongBreakKey) ??
         defaultPomodorosBeforeLongBreak;
   }
 
-  Future<void> savePomodorosBeforeLongBreak(String userId, int count) async {
+  Future<void> savePomodorosBeforeLongBreak(int count) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_key(userId, _pomodorosBeforeLongBreakSuffix), count);
+    await prefs.setInt(_pomodorosBeforeLongBreakKey, count);
   }
 
   // ── Cleanup ──
@@ -114,10 +111,6 @@ class LocalStorage {
     final keys = [
       _key(userId, _sessionSuffix),
       _key(userId, _subjectSuffix),
-      _key(userId, _presetsSuffix),
-      _key(userId, _breakDurationSuffix),
-      _key(userId, _longBreakDurationSuffix),
-      _key(userId, _pomodorosBeforeLongBreakSuffix),
     ];
     for (final key in keys) {
       await prefs.remove(key);
