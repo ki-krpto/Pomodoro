@@ -149,6 +149,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showDeleteProfileDialog(dynamic profile) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete profile?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Type "${profile.name}" to confirm. All sessions for this profile will be deleted.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(hintText: 'Profile name'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade400,
+            ),
+            onPressed: () async {
+              if (controller.text.trim() != profile.name) return;
+              final manager = context.read<UserProfileManager>();
+              await manager.deleteProfile(profile.id);
+              if (ctx.mounted) Navigator.pop(ctx);
+              widget.onSwitchProfile();
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = context.watch<UserProfileManager>().currentProfile;
@@ -217,6 +260,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => _showDeleteProfileDialog(profile),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                'Delete profile',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.red.shade400,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 24),

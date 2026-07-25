@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_profile.dart';
+import 'local_storage.dart';
 
 class UserProfileManager extends ChangeNotifier {
   static const _profilesKey = 'user_profiles_v1';
@@ -62,11 +63,26 @@ class UserProfileManager extends ChangeNotifier {
   }
 
   Future<void> deleteProfile(String id) async {
+    final storage = LocalStorage();
+    await storage.clearUserData(id);
     _profiles.removeWhere((p) => p.id == id);
     if (_currentProfile?.id == id) {
       _currentProfile = _profiles.isNotEmpty ? _profiles.first : null;
     }
     await _save();
+    notifyListeners();
+  }
+
+  Future<void> clearAllData() async {
+    final storage = LocalStorage();
+    for (final p in _profiles) {
+      await storage.clearUserData(p.id);
+    }
+    _profiles.clear();
+    _currentProfile = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_profilesKey);
+    await prefs.remove(_currentProfileKey);
     notifyListeners();
   }
 

@@ -80,6 +80,8 @@ class _ProfilePickerState extends State<ProfilePicker> {
                 ),
               const SizedBox(height: 16),
               _buildAddButton(),
+              const SizedBox(height: 12),
+              _buildClearAllButton(),
               const Spacer(flex: 2),
             ],
           ),
@@ -178,6 +180,51 @@ class _ProfilePickerState extends State<ProfilePicker> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildClearAllButton() {
+    return GestureDetector(
+      onTap: _showClearAllDialog,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Text(
+          'Clear all data',
+          style: TextStyle(
+            fontSize: 13,
+            color: const Color(0xFF3A2E27).withOpacity(0.25),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showClearAllDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear all data?'),
+        content: const Text(
+          'This will delete all profiles and sessions. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade400,
+            ),
+            onPressed: () async {
+              final manager = context.read<UserProfileManager>();
+              await manager.clearAllData();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Delete everything'),
+          ),
+        ],
       ),
     );
   }

@@ -47,6 +47,12 @@ class LocalStorage {
     await prefs.setString(_key(userId, _subjectSuffix), raw);
   }
 
+  Future<void> clearUserData(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_key(userId, _sessionSuffix));
+    await prefs.remove(_key(userId, _subjectSuffix));
+  }
+
   // ── Preferences (device-wide, shared across profiles) ──
 
   static const _presetsKey = 'timer_presets_v1';
