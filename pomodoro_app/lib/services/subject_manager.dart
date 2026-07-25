@@ -7,6 +7,7 @@ class SubjectManager extends ChangeNotifier {
   final LocalStorage _storage = LocalStorage();
   final List<Subject> _subjects = [];
   SessionRepository? _repository;
+  String? _userId;
 
   List<Subject> get subjects => List.unmodifiable(_subjects);
 
@@ -15,6 +16,11 @@ class SubjectManager extends ChangeNotifier {
 
   void attachRepository(SessionRepository repository) {
     _repository = repository;
+  }
+
+  /// Sets the current user ID for scoped local storage.
+  void setUserId(String? userId) {
+    _userId = userId;
   }
 
   Subject? getSubjectByIdentifier(String? identifier) {
@@ -27,7 +33,14 @@ class SubjectManager extends ChangeNotifier {
   }
 
   Future<void> load() async {
-    final loaded = await _storage.loadSubjects();
+    final uid = _userId;
+    if (uid == null) {
+      _subjects.clear();
+      _loaded = true;
+      notifyListeners();
+      return;
+    }
+    final loaded = await _storage.loadSubjects(uid);
     _subjects
       ..clear()
       ..addAll(loaded);
@@ -58,7 +71,10 @@ class SubjectManager extends ChangeNotifier {
 
     _loaded = true;
     notifyListeners();
-    await _storage.saveSubjects(_subjects);
+    final uid = _userId;
+    if (uid != null) {
+      await _storage.saveSubjects(uid, _subjects);
+    }
   }
 
   Future<Subject> createSubject(String name, {Color? color}) async {
@@ -70,7 +86,10 @@ class SubjectManager extends ChangeNotifier {
     );
     _subjects.add(subject);
     notifyListeners();
-    await _storage.saveSubjects(_subjects);
+    final uid = _userId;
+    if (uid != null) {
+      await _storage.saveSubjects(uid, _subjects);
+    }
     _repository?.saveSubject(subject);
     return subject;
   }
@@ -80,14 +99,20 @@ class SubjectManager extends ChangeNotifier {
     if (idx == -1) return;
     _subjects[idx].name = newName;
     notifyListeners();
-    await _storage.saveSubjects(_subjects);
+    final uid = _userId;
+    if (uid != null) {
+      await _storage.saveSubjects(uid, _subjects);
+    }
     _repository?.saveSubject(_subjects[idx]);
   }
 
   Future<void> deleteSubject(String id) async {
     _subjects.removeWhere((s) => s.id == id);
     notifyListeners();
-    await _storage.saveSubjects(_subjects);
+    final uid = _userId;
+    if (uid != null) {
+      await _storage.saveSubjects(uid, _subjects);
+    }
     _repository?.deleteSubject(id);
   }
 

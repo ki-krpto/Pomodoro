@@ -25,8 +25,13 @@ class SessionRepository {
       final response = await _client.from('sessions').insert({
         'user_id': userId,
         'subject': subjectName,
+        'subject_id': session.subjectId,
         'duration_minutes': session.durationMinutes,
         'completed': true,
+        'dx': session.dx,
+        'dy': session.dy,
+        'rotation_deg': session.rotationDeg,
+        'color_index': session.colorIndex,
       }).select('id').single();
 
       return response['id'] as int?;

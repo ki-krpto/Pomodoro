@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide LocalStorage;
 
 import 'config/env.dart';
 import 'repositories/session_repository.dart';
 import 'services/auth_service.dart';
+import 'services/local_storage.dart';
 import 'services/session_manager.dart';
 import 'services/subject_manager.dart';
 import 'services/audio_service.dart';
@@ -36,9 +37,9 @@ class PomodoroCorkboardApp extends StatelessWidget {
         Provider.value(value: repository),
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(
-            create: (_) => SessionManager(repository: repository)..load()),
+            create: (_) => SessionManager(repository: repository)),
         ChangeNotifierProvider(
-            create: (_) => SubjectManager()..attachRepository(repository)..load()),
+            create: (_) => SubjectManager()..attachRepository(repository)),
         ChangeNotifierProvider(create: (_) => AudioService()),
         ChangeNotifierProvider(create: (_) => SpotifyService()),
       ],
@@ -69,6 +70,9 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> {
+  final _localStorage = LocalStorage();
+  String? _lastUserId;
+
   @override
   void initState() {
     super.initState();
@@ -79,12 +83,10 @@ class _AuthGateState extends State<AuthGate> {
     final spotify = context.read<SpotifyService>();
     spotify.handleRedirect();
 
-    // If already logged in, load from cloud immediately
+    // If already logged in, wire up user IDs and load from cloud
     if (auth.isLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.read<SubjectManager>().loadFromCloud().then((_) {
-          context.read<SessionManager>().loadFromCloud();
-        });
+        _setupUser(auth.user?.id);
       });
     }
   }
@@ -95,16 +97,31 @@ class _AuthGateState extends State<AuthGate> {
     super.dispose();
   }
 
+  void _setupUser(String? userId) {
+    final sm = context.read<SessionManager>();
+    final sub = context.read<SubjectManager>();
+    sm.setUserId(userId);
+    sub.setUserId(userId);
+    _lastUserId = userId;
+    sub.loadFromCloud().then((_) => sm.loadFromCloud());
+  }
+
   void _onAuthChanged() {
     final auth = context.read<AuthService>();
     final sm = context.read<SessionManager>();
     final sub = context.read<SubjectManager>();
 
     if (auth.isLoggedIn) {
-      sub.loadFromCloud().then((_) => sm.loadFromCloud());
+      _setupUser(auth.user?.id);
     } else {
+      // Clear old user's cached SharedPreferences data
+      final oldUserId = _lastUserId;
+      if (oldUserId != null) {
+        _localStorage.clearUser(oldUserId);
+      }
+      sm.setUserId(null);
       sm.clear();
-      sm.load();
+      sub.setUserId(null);
       sub.load();
     }
   }
