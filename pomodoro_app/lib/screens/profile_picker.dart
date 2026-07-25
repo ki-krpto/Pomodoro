@@ -90,10 +90,7 @@ class _ProfilePickerState extends State<ProfilePicker> {
 
   Widget _buildProfileCard(UserProfile profile) {
     return GestureDetector(
-      onTap: () async {
-        await context.read<UserProfileManager>().selectProfile(profile.id);
-        widget.onProfileSelected();
-      },
+      onTap: () => _showPasswordDialog(profile),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
@@ -140,7 +137,8 @@ class _ProfilePickerState extends State<ProfilePicker> {
               ),
             ),
             Icon(
-              Icons.chevron_right,
+              Icons.lock_outline,
+              size: 16,
               color: const Color(0xFF3A2E27).withOpacity(0.3),
             ),
           ],
@@ -184,48 +182,27 @@ class _ProfilePickerState extends State<ProfilePicker> {
     );
   }
 
-  void _showCreateDialog() {
+  void _showPasswordDialog(UserProfile profile) {
     final controller = TextEditingController();
-    Color? pickedColor;
+    String? error;
 
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('New profile'),
+          title: Text(profile.name),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: controller,
                 autofocus: true,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(hintText: 'Name'),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final c in _profileColors)
-                    GestureDetector(
-                      onTap: () => setDialogState(() => pickedColor = c),
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: c,
-                          shape: BoxShape.circle,
-                          border: pickedColor == c
-                              ? Border.all(
-                                  color: const Color(0xFF3A2E27),
-                                  width: 2.5,
-                                )
-                              : null,
-                        ),
-                      ),
-                    ),
-                ],
+                obscureText: true,
+                decoration: InputDecoration(
+                  hintText: 'Password',
+                  errorText: error,
+                ),
+                onSubmitted: (_) => _attemptLogin(profile, controller, ctx),
               ),
             ],
           ),
@@ -235,12 +212,101 @@ class _ProfilePickerState extends State<ProfilePicker> {
               child: const Text('Cancel'),
             ),
             FilledButton(
+              onPressed: () => _attemptLogin(profile, controller, ctx),
+              child: const Text('Enter'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _attemptLogin(
+      UserProfile profile, TextEditingController controller, BuildContext ctx) {
+    final password = controller.text;
+    if (context.read<UserProfileManager>().verifyProfilePassword(profile, password)) {
+      Navigator.pop(ctx);
+      context.read<UserProfileManager>().selectProfile(profile.id);
+      widget.onProfileSelected();
+    } else {
+      controller.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Wrong password'),
+          duration: Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _showCreateDialog() {
+    final nameController = TextEditingController();
+    final passwordController = TextEditingController();
+    Color? pickedColor;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('New profile'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(hintText: 'Name'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(hintText: 'Password'),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final c in _profileColors)
+                      GestureDetector(
+                        onTap: () => setDialogState(() => pickedColor = c),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: c,
+                            shape: BoxShape.circle,
+                            border: pickedColor == c
+                                ? Border.all(
+                                    color: const Color(0xFF3A2E27),
+                                    width: 2.5,
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
               onPressed: () {
-                final name = controller.text.trim();
-                if (name.isEmpty) return;
+                final name = nameController.text.trim();
+                final password = passwordController.text;
+                if (name.isEmpty || password.isEmpty) return;
                 context
                     .read<UserProfileManager>()
-                    .createProfile(name, color: pickedColor)
+                    .createProfile(name, password, color: pickedColor)
                     .then((_) {
                   if (ctx.mounted) Navigator.pop(ctx);
                   widget.onProfileSelected();

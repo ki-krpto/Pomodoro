@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/local_storage.dart';
+import '../services/session_manager.dart';
 import '../services/user_profile_manager.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -293,6 +294,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: const Color(0xFF3A2E27).withOpacity(0.5),
             ),
           ),
+        ),
+        const SizedBox(height: 32),
+        Divider(color: const Color(0xFFDDD2C2).withOpacity(0.5)),
+        const SizedBox(height: 16),
+        _buildSectionHeader('Debug'),
+        const SizedBox(height: 4),
+        Text(
+          'Test tools for development',
+          style: TextStyle(
+            fontSize: 13,
+            color: const Color(0xFF3A2E27).withOpacity(0.4),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildSettingTile(
+          label: 'Add test sessions',
+          value: '+5',
+          onTap: () async {
+            final manager = context.read<SessionManager>();
+            await manager.debugBatchSessions(5);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Added 5 test sessions'),
+                  duration: Duration(seconds: 1),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+        ),
+        _buildSettingTile(
+          label: 'Remove all sessions',
+          value: 'Clear',
+          onTap: () async {
+            final manager = context.read<SessionManager>();
+            await manager.clearAllSessions();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Board cleared'),
+                  duration: Duration(seconds: 1),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
         ),
       ],
     );

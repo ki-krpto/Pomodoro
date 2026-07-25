@@ -271,38 +271,6 @@ class _TimerViewState extends State<TimerView> {
     return _isBreak ? 'Take a break' : 'Stay focused';
   }
 
-  Future<void> _debugAddSessions() async {
-    const count = 5;
-    await context.read<SessionManager>().debugBatchSessions(count,
-        subjectId: _selectedSubjectId);
-    setState(() {
-      _newestIndex = context.read<SessionManager>().sessions.length - 1;
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Added $count test sessions'),
-          duration: const Duration(seconds: 1),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
-  Future<void> _debugClearSessions() async {
-    await context.read<SessionManager>().clearAllSessions();
-    setState(() => _newestIndex = -1);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Board cleared'),
-          duration: const Duration(seconds: 1),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
@@ -317,10 +285,7 @@ class _TimerViewState extends State<TimerView> {
     return Column(
       key: const ValueKey('home'),
       children: [
-        _TopBar(
-          onTitleLongPress: _debugAddSessions,
-          onSubtitleLongPress: _debugClearSessions,
-        ),
+        _TopBar(),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
@@ -487,13 +452,7 @@ class _TimerViewState extends State<TimerView> {
 enum _TimerState { idle, running, paused }
 
 class _TopBar extends StatelessWidget {
-  final VoidCallback? onTitleLongPress;
-  final VoidCallback? onSubtitleLongPress;
-
-  const _TopBar({
-    this.onTitleLongPress,
-    this.onSubtitleLongPress,
-  });
+  const _TopBar();
 
   @override
   Widget build(BuildContext context) {
@@ -501,26 +460,12 @@ class _TopBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
         children: [
-          GestureDetector(
-            onLongPress: onTitleLongPress,
-            child: const Text(
-              'Focus Board',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF3A2E27),
-              ),
-            ),
-          ),
-          const Spacer(),
-          GestureDetector(
-            onLongPress: onSubtitleLongPress,
-            child: Text(
-              'Long press to debug',
-              style: TextStyle(
-                fontSize: 11,
-                color: const Color(0xFF3A2E27).withOpacity(0.25),
-              ),
+          const Text(
+            'Focus Board',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF3A2E27),
             ),
           ),
         ],

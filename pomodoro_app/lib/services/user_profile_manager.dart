@@ -30,17 +30,23 @@ class UserProfileManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<UserProfile> createProfile(String name, {Color? color}) async {
+  Future<UserProfile> createProfile(String name, String password,
+      {Color? color}) async {
     final profile = UserProfile(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       name: name,
       color: color ?? UserProfile.generateColor(name),
+      passwordHash: UserProfile.hashPassword(password),
     );
     _profiles.add(profile);
     _currentProfile = profile;
     await _save();
     notifyListeners();
     return profile;
+  }
+
+  bool verifyProfilePassword(UserProfile profile, String password) {
+    return profile.verifyPassword(password);
   }
 
   Future<void> selectProfile(String id) async {
